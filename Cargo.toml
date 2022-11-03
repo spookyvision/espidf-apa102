@@ -1,0 +1,17 @@
+[package]
+name = "espidf-apa102"
+version = "0.1.0"
+authors = ["Anatol Ulrich"]
+edition = "2021"
+resolver = "2"
+
+[dependencies]
+esp-idf-sys = { version = "=0.31.11", features = ["binstart", "native"] }
+esp-idf-svc = { version = "=0.42.5", features = ["alloc"] }
+embedded-svc = "=0.22.3"
+esp-idf-hal = "=0.38"
+bytemuck = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+embuild = "=0.30.4"
+anyhow = "1"
