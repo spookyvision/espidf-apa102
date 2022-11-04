@@ -10,6 +10,7 @@ use esp_idf_sys::{
     spi_host_device_t_SPI2_HOST, spi_transaction_t, spi_transaction_t__bindgen_ty_1,
     SPICOMMON_BUSFLAG_MASTER,
 };
+use rgb::RGB8;
 
 pub const DEFAULT_SPI_HOST: spi_host_device_t = spi_host_device_t_SPI2_HOST;
 pub const LED_STRIP_SPI_FRAME_SK9822_LED_MSB3: u8 = 0xE0;
@@ -23,10 +24,21 @@ pub struct Pixel {
     r: u8,
 }
 
+impl From<RGB8> for Pixel {
+    fn from(rgb: RGB8) -> Self {
+        Self {
+            brightness: 10,
+            r: rgb.r,
+            g: rgb.g,
+            b: rgb.b,
+        }
+    }
+}
+
 impl Default for Pixel {
     fn default() -> Self {
         Self {
-            brightness: LED_STRIP_SPI_FRAME_SK9822_LED_MSB3,
+            brightness: 10,
             r: Default::default(),
             g: Default::default(),
             b: Default::default(),
@@ -141,25 +153,25 @@ impl HeapData {
 }
 
 pub struct Config {
-    pub length: usize,
-    pub data_pin: i32,
-    pub clock_pin: i32,
-    pub clock_speed: i32,
-    pub transfer_size: i32,
-    pub spi_host: spi_host_device_t,
-    pub queue_size: i32,
-    pub dma_channel: u32,
+    length: usize,
+    data_pin: i32,
+    clock_pin: i32,
+    clock_speed: i32,
+    transfer_size: i32,
+    spi_host: spi_host_device_t,
+    queue_size: i32,
+    dma_channel: u32,
 }
 
 impl Config {
-    pub fn new(length: usize, data_pin: i32, clock_pin: i32) -> Self {
+    pub fn new(data_pin: i32, clock_pin: i32) -> Self {
         Self {
-            length,
+            length: 512, // TODO make configurable (power-of-two buffer size?)
             data_pin,
             clock_pin,
             clock_speed: 10_000_000,
-            transfer_size: 0, // TODO make configurable
-            spi_host: spi_host_device_t_SPI2_HOST,
+            transfer_size: 0,           // TODO make configurable
+            spi_host: DEFAULT_SPI_HOST, // TODO make configurable
             queue_size: 1,
             dma_channel: spi_common_dma_t_SPI_DMA_CH_AUTO,
         }
@@ -168,14 +180,17 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self::new(60, 7, 6)
+        Self::new(7, 6)
     }
 }
 
 pub struct Apa {
     data: HeapData,
-    handle: spi_device_handle_t,
+    handle: SpiDevice,
 }
+
+struct SpiDevice(spi_device_handle_t);
+unsafe impl Send for SpiDevice {}
 
 impl Apa {
     pub fn new(config: Config) -> Self {
@@ -216,7 +231,7 @@ impl Apa {
         spi_interface_config.spics_io_num = -1;
         spi_interface_config.queue_size = config.queue_size;
 
-        let res = unsafe {
+        let _res = unsafe {
             spi_bus_initialize(
                 config.spi_host,
                 &spi_bus_config as *const _,
@@ -226,9 +241,12 @@ impl Apa {
 
         let mut handle = null_mut();
 
-        let res =
+        let _res =
             unsafe { spi_bus_add_device(config.spi_host, &spi_interface_config, &mut handle as _) };
-        Self { data, handle }
+        Self {
+            data,
+            handle: SpiDevice(handle),
+        }
     }
 
     pub fn set_pixel(&mut self, idx: usize, pixel: Pixel) {
@@ -238,7 +256,7 @@ impl Apa {
     pub fn flush(&self) {
         let mut tx = spi_transaction_t::default();
 
-        let txl = (8 * self.data.data().len());
+        let txl = 8 * self.data.data().len();
         tx.length = txl as u32;
 
         let tx_buffer = spi_transaction_t__bindgen_ty_1 {
@@ -247,18 +265,18 @@ impl Apa {
         tx.__bindgen_anon_1 = tx_buffer;
         #[allow(non_snake_case)] // throw some shade
         let freeRTOS_magic_copypasta_portMAX_DELAY = 0xffffffff;
-        let res = unsafe {
+        let _res = unsafe {
             spi_device_queue_trans(
-                self.handle as _,
+                self.handle.0 as _,
                 &mut tx as _,
                 freeRTOS_magic_copypasta_portMAX_DELAY,
             )
         };
 
         let mut tx_res = null_mut();
-        let res = unsafe {
+        let _res = unsafe {
             spi_device_get_trans_result(
-                self.handle as _,
+                self.handle.0 as _,
                 &mut tx_res as *mut _,
                 freeRTOS_magic_copypasta_portMAX_DELAY,
             )
