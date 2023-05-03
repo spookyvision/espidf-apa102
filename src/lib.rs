@@ -257,7 +257,7 @@ impl Apa {
         let mut tx = spi_transaction_t::default();
 
         let txl = 8 * self.data.data().len();
-        tx.length = txl as u32;
+        tx.length = txl;
 
         let tx_buffer = spi_transaction_t__bindgen_ty_1 {
             tx_buffer: self.data.as_ptr() as _,
